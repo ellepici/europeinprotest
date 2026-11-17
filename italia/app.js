@@ -2,6 +2,18 @@ let ROWS;  // le righe del CSV, trasformate in oggetti { lon, lat, anno, ... }
 let YEARS; // gli anni presenti nei dati
 let map;   // MapLibre
 let year;  // l'anno selezionato in questo momento
+let REGIONS;        // il GeoJSON delle regioni (serve per calcolare il riquadro di ognuna)
+let hovered = null; // nome della regione sotto il mouse
+let selected = null; // nome della regione aperta (null = vista di tutta l'Italia)
+
+// Riquadro [ovest, sud], [est, nord] di tutta l'Italia
+const ITALY = [[6.4, 36.4], [18.8, 47.2]];
+
+// Spazio libero ai lati della mappa: a sinistra la timeline, a destra il passaporto.
+// È una funzione perché dipende dalla larghezza della finestra in quel momento.
+function pad() {
+  return { top: 60, bottom: 40, left: 120, right: window.innerWidth * 0.42 };
+}
 
 Promise.all([
   fetch("../data/italy.csv").then((r) => r.text()),            
@@ -9,6 +21,7 @@ Promise.all([
   fetch("../data/neighbors.geojson").then((r) => r.json()),         // i paesi intorno (rosa nel wireframe)
 ]).then(([csvText, regions, neighbors]) => {
   ROWS = parseCSV(csvText);
+  REGIONS = regions;
   // anni unici, in ordine: new Set toglie i doppioni
   YEARS = [...new Set(ROWS.map((r) => r.anno))].sort();
   year = YEARS[YEARS.length - 1]; // parte dall'ultimo anno (2025)
@@ -33,26 +46,6 @@ function parseCSV(text) {
     return row;
   });
 }
-function pointsOfYear() {
-  const byPlace = {}; // es. { "12.49,41.89": 303, "7.67,45.07": 270, ... }
-
-  for (const r of ROWS) {
-    if (r.anno !== year) continue;         // salta gli altri anni
-    const k = r.lon + "," + r.lat;         // le coordinate fanno da "chiave"
-    byPlace[k] = (byPlace[k] || 0) + r.n;  // somma gli eventi in quel luogo
-  }
-
-  const max = Math.max(...Object.values(byPlace));
-
-  return {
-    type: "FeatureCollection",
-    features: Object.entries(byPlace).map(([k, n]) => ({
-      type: "Feature",
-      geometry: { type: "Point", coordinates: k.split(",").map(Number) },
-      properties: { w: Math.log1p(n) / Math.log1p(max) },
-    })),
-  };
-}
 function regionTotal(name) {
   let tot = 0;
   for (const r of ROWS) {
@@ -71,17 +64,15 @@ function drawMap(regions, neighbors) {
       layers: [{ id: "bg", type: "background", paint: { "background-color": "#680108" } }],
     },
     // Riquadro [ovest, sud], [est, nord] che deve stare tutto nello schermo:
-    bounds: [[6.4, 36.4], [18.8, 47.2]],
-    // spazio libero ai lati: a sinistra la timeline, a destra il passaporto
-    fitBoundsOptions: { padding: { top: 60, bottom: 40, left: 120, right: window.innerWidth * 0.42 } },
+    bounds: ITALY,
+    fitBoundsOptions: { padding: pad() },
     attributionControl: { compact: true, customAttribution: "Confini: ISTAT/openpolis, Natural Earth · Dati: ACLED" },
   });
 
   map.on("load", () => {
     // SOURCE = i dati. LAYER = come disegnarli.
     map.addSource("neighbors", { type: "geojson", data: neighbors });
-    map.addSource("regions", { type: "geojson", data: regions });
-    map.addSource("events", { type: "geojson", data: pointsOfYear() });
+    map.addSource("regions", { type: "geojson", data: regions, promoteId: "name" });
 
     // I layer si disegnano uno sopra l'altro, nell'ordine in cui li aggiungi.
 
@@ -92,24 +83,34 @@ function drawMap(regions, neighbors) {
     // b) L'Italia bianca (le regioni)
     map.addLayer({ id: "regions", type: "fill", source: "regions", paint: { "fill-color": "#FFFFFF" } });
 
-    // c) La heatmap degli eventi: macchie rosse sul bianco
+    // c) Le masse degli eventi: cerchi impacchettati per città e tipo (vedi masse.js)
+    addMasseLayer();
+
+    // d) I confini delle regioni, sottili, sopra il retino così si vedono sempre
+    map.addLayer({ id: "borders", type: "line", source: "regions", paint: { "line-color": "#D0222C", "line-opacity": 0.25, "line-width": 0.6 } });
+
+    // e) Quando una regione è aperta, le altre vengono velate col colore del mare.
+    //    Il filtro dice quali regioni coprire: all'inizio nessuna.
     map.addLayer({
-      id: "heat", type: "heatmap", source: "events",
-      paint: {
-        // quanto conta ogni punto: il peso "w" calcolato in pointsOfYear()
-        "heatmap-weight": ["get", "w"],
-        // raggio delle macchie: più zoomi, più si allargano (8px a zoom 5, 30px a zoom 9)
-        "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 5, 8, 9, 30],
-        // intensità: più alta = macchie più scure, come i pallini del wireframe
-        "heatmap-intensity": 1.6,
-        // colori in base alla densità: trasparente → rosso chiaro → rosso → rosso scurissimo
-        "heatmap-color": ["interpolate", ["linear"], ["heatmap-density"],
-          0, "rgba(208,34,44,0)", 0.1, "rgba(208,34,44,0.6)", 0.3, "#D0222C", 0.7, "#720000"],
-      },
+      id: "dim", type: "fill", source: "regions",
+      filter: ["==", ["get", "name"], ""],
+      paint: { "fill-color": "#680108", "fill-opacity": 0.55 },
     });
 
-    // d) I confini delle regioni, sottili, sopra la heatmap così si vedono sempre
-    map.addLayer({ id: "borders", type: "line", source: "regions", paint: { "line-color": "#D0222C", "line-opacity": 0.25, "line-width": 0.6 } });
+    // f) Contorno della regione sotto il mouse o aperta.
+    //    "feature-state" è uno stato che cambiamo da JS (hover / selected) senza ridisegnare i dati.
+    const hot = ["any",
+      ["boolean", ["feature-state", "hover"], false],
+      ["boolean", ["feature-state", "selected"], false]];
+    map.addLayer({
+      id: "region-outline", type: "line", source: "regions",
+      layout: { "line-join": "round" },
+      paint: {
+        "line-color": "#D0222C",
+        "line-width": ["case", ["boolean", ["feature-state", "selected"], false], 2.5, 2],
+        "line-opacity": ["case", hot, 1, 0],
+      },
+    });
 
     // --- HOVER: riquadro con nome della regione e numero di eventi ---
     const tip = document.getElementById("tooltip");
@@ -117,8 +118,13 @@ function drawMap(regions, neighbors) {
     // Quando il mouse si muove SOPRA il layer "regions"...
     map.on("mousemove", "regions", (e) => {
       const name = e.features[0].properties.name; // regione sotto il mouse
+      setHover(name);
+      map.getCanvas().style.cursor = "pointer";
       // split("/")[0] accorcia "Valle d'Aosta/Vallée d'Aoste" in "Valle d'Aosta"
       tip.innerHTML = `<b>${name.split("/")[0]}</b><br>${regionTotal(name)} eventi nel ${year}`;
+      // se il mouse è sopra una massa, mostra anche il tipo e quanti eventi contiene
+      const m = map.queryRenderedFeatures(e.point, { layers: ["masse"] })[0];
+      if (m) tip.innerHTML += `<br>${m.properties.label}: ${m.properties.n}`;
       // mette il riquadro vicino al mouse (e.point = posizione nella mappa)
       tip.style.left = e.point.x + "px";
       tip.style.top = e.point.y + map.getContainer().offsetTop + "px";
@@ -126,7 +132,25 @@ function drawMap(regions, neighbors) {
     });
 
     // ...e quando esce dalle regioni (va sul mare) lo nasconde.
-    map.on("mouseleave", "regions", () => (tip.hidden = true));
+    map.on("mouseleave", "regions", () => {
+      tip.hidden = true;
+      setHover(null);
+      map.getCanvas().style.cursor = "";
+    });
+
+    // --- CLIC: apre la regione (zoom per farla stare tutta nello schermo) ---
+    // Clic su un'altra regione = passa a quella. Clic sulla stessa, sul mare
+    // o sui paesi vicini = torna a tutta l'Italia. Anche il tasto Esc torna indietro.
+    map.on("click", (e) => {
+      const f = map.queryRenderedFeatures(e.point, { layers: ["regions"] })[0];
+      const name = f ? f.properties.name : null;
+      if (!name || name === selected) selectRegion(null);
+      else selectRegion(name);
+    });
+    window.addEventListener("keydown", (e) => { if (e.key === "Escape") selectRegion(null); });
+
+    // se la finestra cambia dimensione, rifà l'inquadratura
+    window.addEventListener("resize", () => fit(false));
 
     update(); // primo disegno con l'anno di partenza
   });
@@ -144,13 +168,65 @@ function drawYears() {
 
 function update() {
   // evidenzia il bottone dell'anno attivo (classe CSS "on")
-  document.querySelectorAll(".years button").forEach((b) => b.classList.toggle("on", +b.textContent === year));
+  document.querySelectorAll("#years button").forEach((b) => b.classList.toggle("on", +b.textContent === year));
 
-  // sostituisce i punti della heatmap con quelli del nuovo anno
-  map.getSource("events")?.setData(pointsOfYear());
+  // ridisegna le masse con gli eventi del nuovo anno
+  refreshMasse();
 
   // totale eventi dell'anno, mostrato nel passaporto
   const tot = ROWS.filter((r) => r.anno === year).reduce((s, r) => s + r.n, 0);
   document.getElementById("y").textContent = year;
   document.getElementById("tot").textContent = tot;
+}
+
+
+// ---------- REGIONI: hover, selezione e zoom ----------
+
+// Accende il contorno della regione sotto il mouse (e spegne quella di prima)
+function setHover(name) {
+  if (hovered === name) return;
+  if (hovered) map.setFeatureState({ source: "regions", id: hovered }, { hover: false });
+  if (name) map.setFeatureState({ source: "regions", id: name }, { hover: true });
+  hovered = name;
+}
+
+// Apre una regione (name) oppure torna a tutta l'Italia (null)
+function selectRegion(name) {
+  if (selected) map.setFeatureState({ source: "regions", id: selected }, { selected: false });
+  selected = name;
+  if (name) map.setFeatureState({ source: "regions", id: name }, { selected: true });
+
+  // vela tutte le regioni tranne quella aperta; senza selezione non vela niente
+  map.setFilter("dim", name ? ["!=", ["get", "name"], name] : ["==", ["get", "name"], ""]);
+  filterMasse(name);
+  fit(true);
+}
+
+// Inquadra la regione aperta, o tutta l'Italia, dentro lo spazio libero dello schermo
+function fit(animate) {
+  const box = selected ? regionBounds(selected) : ITALY;
+  map.fitBounds(box, { padding: pad(), duration: animate ? 900 : 0, maxZoom: 10 });
+}
+
+// Riquadro [[ovest, sud], [est, nord]] di una regione, calcolato dal GeoJSON.
+// Le isolette piccole (es. Lampedusa per la Sicilia) non contano,
+// altrimenti la regione verrebbe rimpicciolita per farle entrare nello schermo.
+function regionBounds(name) {
+  const f = REGIONS.features.find((f) => f.properties.name === name);
+  const g = f.geometry;
+  const polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+
+  // riquadro e area (approssimata) di ogni pezzo della regione
+  const parts = polys.map((poly) => {
+    let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
+    for (const [x, y] of poly[0]) { w = Math.min(w, x); e = Math.max(e, x); s = Math.min(s, y); n = Math.max(n, y); }
+    return { w, s, e, n, area: (e - w) * (n - s) };
+  });
+  const biggest = Math.max(...parts.map((p) => p.area));
+  const kept = parts.filter((p) => p.area >= biggest * 0.02); // tiene i pezzi grandi almeno il 2% del principale
+
+  return [
+    [Math.min(...kept.map((p) => p.w)), Math.min(...kept.map((p) => p.s))],
+    [Math.max(...kept.map((p) => p.e)), Math.max(...kept.map((p) => p.n))],
+  ];
 }
