@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <title>Bozza · Vista Italia</title>
+  <!-- Font della Style Guide: Veneer (titoli) e Typeka (testi), da Adobe Fonts.
+       Il kit funziona solo su localhost: per altri domini va aggiunto su fonts.adobe.com -->
+  <link rel="stylesheet" href="https://use.typekit.net/pvj4rxm.css">
+  <!-- riserve se il kit non carica -->
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Special+Elite&display=swap" rel="stylesheet">
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+  <link href="style.css" rel="stylesheet">
+</head>
+<body>
+  <!-- la mappa occupa tutto lo schermo, il resto sta sopra -->
+  <div id="map"></div>
+  <div id="tooltip" class="tooltip" hidden></div>
+
+  <div class="brand">EUROPE <span>in</span> PROTEST</div>
+
+  <!-- timeline verticale a sinistra, come nel wireframe -->
+  <nav class="timeline" id="years"></nav>
+
+  <!-- bozza della struttura del passaporto: solo segnaposto -->
+  <aside class="passport">
+    <div class="page">
+      <div class="waves"></div>
+      <div class="photo">
+        <span class="code">ITA</span>
+        <span class="photo-label">Italia</span>
+      </div>
+      <p class="total">Eventi nel <span id="y">—</span><br><b id="tot">—</b></p>
+      <div class="stamps">
+        <div class="stamp big"></div>
+        <div class="stamp"></div><div class="stamp"></div>
+        <div class="stamp small"></div><div class="stamp"></div>
+      </div>
+      <div class="stripes"></div>
+    </div>
+    <div class="page page-2"></div>
+  </aside>
+
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

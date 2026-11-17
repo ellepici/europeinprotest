@@ -1,0 +1,105 @@
+/* Colori dalla Style Guide + quelli presi dal WIREFRAME 4 */
+:root {
+  --mare: #680108;     /* sfondo / mare */
+  --vicini: #ad5e61;   /* paesi intorno all'Italia */
+  --rosso: #D0222C;
+  --rosso-scuro: #9A0008;
+  --crema: #F5EACA;
+  --sabbia: #B19770;
+  --bianco: #FFFFFF;
+
+  /* Style Guide: Veneer (titoli) e Typeka (testi), con le riserve gratuite */
+  --font-titoli: "veneer", "Oswald", sans-serif;
+  --font-testi: "typeka", "Special Elite", monospace;
+}
+
+body {
+  margin: 0;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--mare);
+  color: var(--crema);
+  font-family: var(--font-testi);
+}
+
+#map { position: absolute; inset: 0; }
+
+.brand {
+  position: absolute; top: 20px; left: 90px;
+  font-family: var(--font-titoli); font-size: 22px; color: var(--bianco);
+}
+.brand span { font-family: var(--font-testi); font-size: 14px; }
+
+/* ---------- timeline verticale ---------- */
+.timeline {
+  position: absolute; left: 40px; top: 70px; bottom: 50px;
+  border-left: 1px solid rgba(255, 255, 255, .5);
+  display: flex; flex-direction: column; justify-content: space-between;
+}
+.timeline button {
+  position: relative; left: -6px;
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: rgba(255, 255, 255, .75);
+  font-family: var(--font-titoli); font-size: 16px;
+  display: flex; align-items: center; gap: 10px;
+}
+.timeline button::before { /* pallino sulla linea */
+  content: ""; width: 11px; height: 11px; border-radius: 50%;
+  background: var(--mare); border: 1px solid var(--bianco);
+}
+.timeline button:hover { color: var(--bianco); }
+.timeline button.on { color: var(--bianco); font-size: 20px; }
+.timeline button.on::before { background: var(--bianco); }
+
+/* ---------- hover ---------- */
+.tooltip {
+  position: absolute; pointer-events: none; z-index: 5;
+  background: var(--crema); color: #000; padding: 6px 10px; font-size: 13px;
+  transform: translate(12px, 12px);
+}
+.tooltip b { font-family: var(--font-titoli); font-size: 16px; text-transform: uppercase; }
+
+/* ---------- passaporto (esce dal bordo destro, come nel wireframe) ---------- */
+.passport {
+  position: absolute; top: 12vh; bottom: 12vh; right: -16vw;
+  width: 50vw;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+  background: var(--rosso); padding: 8px; border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+}
+.page {
+  background: var(--crema); color: var(--rosso-scuro);
+  border-radius: 8px; padding: 22px;
+  display: flex; flex-direction: column; gap: 14px;
+  position: relative;
+}
+.waves { /* le righe ondulate in alto, come segnaposto */
+  height: 40px; width: 45%;
+  background: repeating-linear-gradient(transparent 0 7px, var(--rosso) 7px 9px);
+  opacity: .5;
+}
+.photo {
+  width: 45%; aspect-ratio: 3 / 4;
+  border: 2px solid var(--rosso); position: relative;
+  display: flex; align-items: flex-end; padding: 8px;
+}
+.photo .code {
+  position: absolute; right: -60px; top: 6px;
+  font-family: var(--font-titoli); font-size: 30px; color: var(--rosso);
+}
+.photo-label { font-size: 12px; color: var(--sabbia); }
+.total { margin: 0; font-size: 13px; }
+.total b { font-family: var(--font-titoli); font-size: 32px; }
+
+.stamps { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: auto; }
+.stamp { width: 56px; height: 56px; border-radius: 50%; border: 3px double var(--rosso); opacity: .7; }
+.stamp.big { width: 86px; height: 86px; }
+.stamp.small { width: 40px; height: 40px; }
+
+.stripes {
+  height: 12px;
+  background: repeating-linear-gradient(-45deg, var(--rosso) 0 6px, transparent 6px 14px);
+}
+.page-2 { opacity: .9; }
+
+.maplibregl-ctrl-attrib { font-size: 10px; }

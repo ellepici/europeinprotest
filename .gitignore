@@ -1,0 +1,9 @@
+data/raw/
+*.xlsx
+*.csv
+
+!data/italy.csv
+
+.DS_Store
+__pycache__/
+.venv/
